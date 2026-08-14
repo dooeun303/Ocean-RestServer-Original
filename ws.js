@@ -29,6 +29,31 @@ function initWebSocket(server) {
                     console.log(`[WS] AR로 포워딩: file_id=${msg.file_id}`);
                     sendTo('AR', msg);
                 }
+                // 화상통화 요청(MR→AR)
+                else if (msg.type === 'call_request') {
+                    console.log(`[WS] AR로 통화요청 포워딩: channelName=${msg.channelName}`);
+                    sendTo('AR', msg);
+                }
+                // 화상통화 응답(AR→MR)
+                else if (msg.type === 'call_response') {
+                    console.log(`[WS] MR로 통화응답 포워딩: channelName=${msg.channelName}, accepted=${msg.accepted}`);
+                    sendTo('MR', msg);
+                }
+                // 화상통화 종료 (MR↔AR 어느 쪽이든 상대 플랫폼으로 전달)
+                else if (msg.type === 'call_end') {
+                    const target = platform === 'MR' ? 'AR' : 'MR';
+                    console.log(`[WS] ${target}로 통화종료 포워딩: channelName=${msg.channelName}`);
+                    sendTo(target, msg);
+                }
+                // 작업 가이드 현재 단계 (MR→AR, MR만 단계를 넘기므로 편방향)
+                else if (msg.type === 'guide_step') {
+                    console.log(`[WS] AR로 작업가이드 단계 포워딩: ${msg.stepIndex}/${msg.stepCount}`);
+                    sendTo('AR', msg);
+                }
+                // 실시간 그리기 (MR→AR, MR이 통화 중 라이브 화면 위에 그린 선을 포인트 단위로 스트리밍, 편방향)
+                else if (msg.type === 'draw_start' || msg.type === 'draw_point' || msg.type === 'draw_end') {
+                    sendTo('AR', msg);
+                }
             } catch (err) {
                 console.error('[WS] 메시지 파싱 오류:', err.message);
             }

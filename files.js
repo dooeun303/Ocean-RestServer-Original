@@ -25,7 +25,8 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage,
     fileFilter: (req, file, cb) => {
-        const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'application/pdf'];
+        const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'application/pdf',
+            'model/gltf-binary', 'model/gltf+json']; // .glb / .gltf (3D 모델 공유용)
         if (allowed.includes(file.mimetype)) cb(null, true);
         else cb(new Error('허용되지 않는 파일 형식입니다.'));
     },
@@ -65,13 +66,14 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     const { originalname, mimetype, size, filename } = req.file;
     const url = `/uploads/${filename}`;
+    const type = req.body.type || 'general'; // InfoShareManager(MR) 파일목록이 type=general로 필터링하므로 기본값을 맞춰준다
 
     try {
         const { rows } = await pool.query(
-            `INSERT INTO ttt.file (id, name, url, mime_type, size)
-             VALUES (gen_random_uuid(), $1, $2, $3, $4)
+            `INSERT INTO ttt.file (id, name, url, mime_type, size, type)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
              RETURNING *`,
-            [originalname, url, mimetype, size]
+            [originalname, url, mimetype, size, type]
         );
         return res.status(201).json({ success: true, data: rows[0] });
     } catch (err) {
