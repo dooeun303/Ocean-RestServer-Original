@@ -40,8 +40,18 @@ Unity  ──WAV(16kHz/16-bit)──▶  :3000
 | `WHISPER_DEVICE` | `cpu` | `cuda` 로 GPU (별도 CUDA 라이브러리 필요) |
 | `WHISPER_COMPUTE` | `int8` | GPU면 `float16` |
 | `STT_INTERNAL_URL` | `http://127.0.0.1:8900/api/stt` | 프록시 대상 |
-| `OLLAMA_MODEL` | `exaone3.5:7.8b` | 요약 모델. `:2.4b` 로 경량화(환각↑) |
+| `OLLAMA_MODEL` | `exaone3.5:7.8b,exaone3.5:2.4b` | 쉼표 구분 폴백 목록(앞에서부터 시도). 앞 모델이 OOM 등으로 실패하면 다음 모델로 자동 재시도 |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama 주소 |
+
+### GPU 메모리 / OOM (2026-09-04)
+
+RTX 3060 Laptop 6GB + Unity 에디터가 GPU를 같이 쓰면 `exaone3.5:7.8b` 가
+`unable to allocate CUDA_Host buffer` (KV 캐시 ~1.1GB) 로 안 뜬다. `summarize.js` 대응:
+
+- **`options.num_ctx: 2048`** — 모델 기본 컨텍스트(32K)의 KV 캐시가 OOM 주범. 프롬프트가 수백 토큰이라 2048로 충분. → 이걸로 7.8b가 6GB에 올라옴(검증: 로드 9.6s + eval 1.3s)
+- `options.num_predict: 256`, `keep_alive: '30m'` (한 번 뜬 모델 유지)
+- 모델 폴백 체인: 7.8b 실패 시 2.4b 자동 재시도. 둘 다 실패해야 502
+- 그래도 안 되면 Unity 에디터 종료 후 재시도, 또는 `OLLAMA_MODEL=exaone3.5:2.4b` 강제
 
 ## summarize.js — 프롬프트
 

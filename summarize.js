@@ -15,13 +15,47 @@ const fetch   = require('node-fetch');
 //       jobTitle 이 없으면(테스트 등) 조치사항/특이사항 2줄만 출력.
 //
 // Ollama는 설치 시 Windows 백그라운드로 11434에서 자동 실행됨. 모델은 `ollama pull` 로 받아둠.
-//   기본: exaone3.5:7.8b (LG, 한국어 특화, RTX 3060 GPU 구동)
-//   느리면: OLLAMA_MODEL=exaone3.5:2.4b (경량, 대신 환각 늘어남)
+//   기본: exaone3.5:7.8b (LG, 한국어 특화, RTX 3060 GPU 구동) → 실패 시 exaone3.5:2.4b 로 자동 폴백
+//   OLLAMA_MODEL 로 목록 재정의 가능(쉼표 구분, 앞에서부터 시도): OLLAMA_MODEL="exaone3.5:2.4b"
+//
+// 2026-09-04: RTX 3060 Laptop 6GB + Unity 에디터가 GPU를 같이 쓰면 7.8b가 OOM("unable to
+//   allocate CUDA_Host buffer")으로 안 뜬다. 대응:
+//   ① 모델 목록을 순서대로 시도(7.8b 실패하면 2.4b) ② num_ctx 2048 로 KV 캐시 버퍼 축소
+//   ③ keep_alive 로 한 번 뜬 모델 유지. 그래도 다 실패하면 마지막 에러로 502.
 // =============================================
-const OLLAMA_URL   = process.env.OLLAMA_URL   || 'http://127.0.0.1:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'exaone3.5:7.8b';
+const OLLAMA_URL    = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+const OLLAMA_MODELS = (process.env.OLLAMA_MODEL || 'exaone3.5:7.8b,exaone3.5:2.4b')
+    .split(',').map(s => s.trim()).filter(Boolean);
 
 const MIN_TEXT_LEN = 10; // 이보다 짧으면 요약 생략(환각 방지)
+
+// OOM/모델 로드 실패처럼 "다른 모델로 재시도할 가치가 있는" 에러인지.
+function isRetriable(msg) {
+    const m = (msg || '').toLowerCase();
+    return m.includes('out-of-memory') || m.includes('out of memory') ||
+           m.includes('unable to allocate') || m.includes('failed to allocate') ||
+           m.includes('error loading model') || m.includes('cuda') ||
+           m.includes('500') || m.includes('502') || m.includes('503');
+}
+
+async function askOllama(model, messages) {
+    const r = await fetch(`${OLLAMA_URL}/api/chat`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model,
+            stream: false,
+            keep_alive: '30m',
+            options: { temperature: 0.2, num_ctx: 2048, num_predict: 256 },
+            messages,
+        }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(JSON.stringify(data));
+    const summary = ((data.message && data.message.content) || '').trim();
+    if (!summary) throw new Error('빈 응답');
+    return summary;
+}
 
 function buildMessages(text, jobTitle) {
     const rules =
@@ -73,34 +107,28 @@ router.post('/', async (req, res) => {
         });
     }
 
-    try {
-        const r = await fetch(`${OLLAMA_URL}/api/chat`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model:  OLLAMA_MODEL,
-                stream: false,
-                options: { temperature: 0.2 },
-                messages: buildMessages(text, jobTitle),
-            }),
-        });
+    const messages = buildMessages(text, jobTitle);
+    let lastErr = '';
 
-        const data = await r.json();
-        if (!r.ok) throw new Error(JSON.stringify(data));
-
-        const summary = ((data.message && data.message.content) || '').trim();
-        if (!summary) throw new Error('빈 응답');
-
-        console.log('[SUMMARIZE] 완료:', summary.slice(0, 60).replace(/\n/g, ' ') + '...');
-        return res.json({ success: true, summary, model: OLLAMA_MODEL });
-
-    } catch (err) {
-        console.error('[SUMMARIZE] 오류:', err.message);
-        return res.status(502).json({
-            success: false,
-            error: `Ollama(11434) 요약 실패: ${err.message}. ollama 실행 및 모델(${OLLAMA_MODEL}) pull 여부 확인.`,
-        });
+    for (let i = 0; i < OLLAMA_MODELS.length; i++) {
+        const model = OLLAMA_MODELS[i];
+        try {
+            const summary = await askOllama(model, messages);
+            console.log(`[SUMMARIZE] 완료(${model}):`, summary.slice(0, 60).replace(/\n/g, ' ') + '...');
+            return res.json({ success: true, summary, model });
+        } catch (err) {
+            lastErr = err.message;
+            const more = i < OLLAMA_MODELS.length - 1;
+            console.error(`[SUMMARIZE] ${model} 실패${more ? ' → 다음 모델 시도' : ''}:`, err.message);
+            if (!more || !isRetriable(err.message)) break; // 재시도 가치 없는 에러면 즉시 중단
+        }
     }
+
+    return res.status(502).json({
+        success: false,
+        error: `Ollama(11434) 요약 실패: ${lastErr}. 시도한 모델: ${OLLAMA_MODELS.join(', ')}. ` +
+               `ollama 실행 여부, 모델 pull 여부, GPU 메모리(에디터 종료 후 재시도) 확인.`,
+    });
 });
 
 module.exports = router;
