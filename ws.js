@@ -45,14 +45,38 @@ function initWebSocket(server) {
                     console.log(`[WS] ${target}로 통화종료 포워딩: channelName=${msg.channelName}`);
                     sendTo(target, msg);
                 }
-                // 작업 가이드 현재 단계 (MR→AR, MR만 단계를 넘기므로 편방향)
-                else if (msg.type === 'guide_step') {
-                    console.log(`[WS] AR로 작업가이드 단계 포워딩: ${msg.stepIndex}/${msg.stepCount}`);
-                    sendTo('AR', msg);
+                // 작업 가이드 단계 제어 (AR→MR, 2026-08-26: 방향 반전 - AR이 이전/다음을 눌러
+                // 넘기면 MR(WorkGuidePanel, 자체 버튼 없음)이 그대로 따라간다)
+                else if (msg.type === 'guide_step_control') {
+                    console.log(`[WS] MR로 작업가이드 단계 포워딩: ${msg.stepIndex}/${msg.stepCount}`);
+                    sendTo('MR', msg);
                 }
                 // 실시간 그리기 (MR→AR, MR이 통화 중 라이브 화면 위에 그린 선을 포인트 단위로 스트리밍, 편방향)
                 else if (msg.type === 'draw_start' || msg.type === 'draw_point' || msg.type === 'draw_end') {
                     sendTo('AR', msg);
+                }
+                // 3D 모델 회전 스트리밍 (MR→AR, MR이 컨트롤러로 모델을 돌리면 그 회전을 실시간 전달, 편방향)
+                else if (msg.type === 'model_rotate') {
+                    sendTo('AR', msg);
+                }
+                // 3D 모델 위 포인팅/지시 (MR→AR, MR이 컨트롤러 레이로 모델을 가리키면 그 지점을 실시간 전달, 편방향)
+                else if (msg.type === 'model_point') {
+                    sendTo('AR', msg);
+                }
+                // 3D 모델 창 열림/닫힘 (MR→AR, MR이 "모델 회전 테스트"를 열거나 닫거나 탭을
+                // 벗어나면 AR도 같이 모델을 띄우거나 지운다, 편방향)
+                else if (msg.type === 'model_view') {
+                    sendTo('AR', msg);
+                }
+                // 3D 모델 분해도 토글 (MR→AR, 부품을 흩어놓을지/모을지 편방향 전달 - 애니메이션 자체는 양쪽이 각자 재생)
+                else if (msg.type === 'model_explode') {
+                    sendTo('AR', msg);
+                }
+                // 유지보수 작업 저장 완료 (AR→MR, 통화 상태와 무관하게 항상 전달 - MR은 도크를
+                // 닫고 깜빡이던 설비 하이라이트도 정리한다)
+                else if (msg.type === 'maintenance_complete') {
+                    console.log('[WS] MR로 작업 완료 포워딩');
+                    sendTo('MR', msg);
                 }
             } catch (err) {
                 console.error('[WS] 메시지 파싱 오류:', err.message);

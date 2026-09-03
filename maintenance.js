@@ -17,7 +17,7 @@ const LIST_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.description, m.r
     '   WHERE equipment_id = m.equipment_id AND is_active = true' +
     '   ORDER BY triggered_at DESC LIMIT 1' +
     ' ) a ON true' +
-    ' ORDER BY m.scheduled_at DESC';
+    ' ORDER BY m.scheduled_at ASC';
 
 // 상태로 유지보수 이력 조회
 const LIST_BY_STATUS_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.description, m.result, m.status, m.scheduled_at, m.completed_at, m.technician_id, t.name AS technician_name, ' +
@@ -35,7 +35,7 @@ const LIST_BY_STATUS_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.descri
     '   ORDER BY triggered_at DESC LIMIT 1' +
     ' ) a ON true' +
     ' WHERE m.status = $1' +
-    ' ORDER BY m.scheduled_at DESC';
+    ' ORDER BY m.scheduled_at ASC';
 
 // 유지보수 이력 상세 정보 쿼리
 const DETAIL_QUERY = 'SELECT m.id, m.work_type, m.description, m.result, m.status,' +

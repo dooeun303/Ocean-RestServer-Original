@@ -19,8 +19,12 @@ const maintenanceRouter = require('./maintenance'); // 유지보수 이력 라�
 const inspectionRouter = require('./inspection'); // 원격점검 라우터
 const fileRouter = require('./files'); // MR - AR 파일 전송(정보공유) 라우터
 const summaryRouter = require('./summary'); // 화상통화 요약 라우터
+const sttRouter = require('./stt'); // 음성 전사(STT) 프록시 라우터 → 내부 faster-whisper(8900)
+const { startSttService } = require('./stt_autostart'); // faster-whisper 서비스 자동 실행
+const summarizeRouter = require('./summarize'); // STT 원문 → 로컬 LLM(Ollama) 요약
 const manualRouter = require('./manual');
 const technicianRouter = require('./technician');
+const supportCallRouter = require('./support_call'); // AR→MR 지원 요청(화상통화) 큐 라우터
 
 const app = express();
 const server = http.createServer(app);
@@ -29,7 +33,7 @@ app.use(express.json());
 // CORS (Unity WebRequest 허용)
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     next();
 });
@@ -45,14 +49,20 @@ app.use('/api/inspections', inspectionRouter); // 원격점검 라우터
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/files', fileRouter);
 app.use('/api/summary', summaryRouter);
+app.use('/api/stt', sttRouter); // Unity SpeechToTextTestDemo → MP3/WAV 전사
+app.use('/api/summarize', summarizeRouter); // 전사 원문 → 로컬 LLM 요약
 app.use('/api/manual', manualRouter);
 app.use('/api/technician', technicianRouter);
+app.use('/api/support-calls', supportCallRouter);
 
 
 
 // Websocket + DB 리스너
 initWebSocket(server);
 startListening(handleAlarm);
+
+// faster-whisper STT 서비스(stt_service.py)를 함께 자동 실행 (없으면 조용히 건너뜀)
+startSttService();
 
 server.listen(3000, () => {
     console.log('[SERVER] 포트 3000 실행 중');

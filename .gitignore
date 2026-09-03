@@ -1,0 +1,4 @@
+# Python STT 서비스 아티팩트 (stt_service.py용)
+.venv-stt/
+__pycache__/
+*.pyc
