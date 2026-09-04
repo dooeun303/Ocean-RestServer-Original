@@ -53,9 +53,15 @@ const DETAIL_QUERY = 'SELECT m.id, m.work_type, m.description, m.result, m.statu
     ' LIMIT 1';
 
 // 유지보수 이력 업데이트 쿼리
-const UPDATE_QUERY = 'UPDATE maintenance_log ' +
-    'SET status = $1, result = $2, completed_at = CASE WHEN $3 = \'completed\' THEN NOW() ELSE completed_at END ' +
+// ai_summary 컬럼이 있으면 같이 저장하고, 없는 DB(42703)면 자동으로 아래 축약 쿼리로 폴백한다.
+const UPDATE_QUERY_WITH_SUMMARY = 'UPDATE maintenance_log ' +
+    'SET status = $1, result = $2, ai_summary = $3, ' +
+    'completed_at = CASE WHEN $1 = \'completed\' THEN NOW() ELSE completed_at END ' +
     'WHERE id = $4 ' +
+    'RETURNING *';
+const UPDATE_QUERY = 'UPDATE maintenance_log ' +
+    'SET status = $1, result = $2, completed_at = CASE WHEN $1 = \'completed\' THEN NOW() ELSE completed_at END ' +
+    'WHERE id = $3 ' +
     'RETURNING *';
 
 
@@ -197,17 +203,29 @@ router.get('/:id', async (req, res) => {
 
 
 
-// 5. PATCH /api/maintenance/:id (상태 업데이트)
+// 5. PATCH /api/maintenance/:id (상태/결과 업데이트)
+//    body: { status, result?, ai_summary? }  - status='completed' 이면 completed_at = NOW()
 router.patch('/:id', async (req, res) => {
     const { id } = req.params;
-    const { status, result } = req.body;
+    const { status, result, ai_summary } = req.body;
 
     if (!status) {
         return res.status(400).json({ success: false, message: 'status 값 필요' });
     }
 
     try {
-        const { rows } = await pool.query(UPDATE_QUERY, [status, result || null, status, id]);
+        let rows;
+        try {
+            ({ rows } = await pool.query(UPDATE_QUERY_WITH_SUMMARY,
+                [status, result || null, ai_summary || null, id]));
+        } catch (e) {
+            if (e.code === '42703') { // ai_summary 컬럼 없음 → 요약 없이 저장
+                console.warn('[MAINTENANCE] ai_summary 컬럼 없음 - 요약 제외하고 저장');
+                ({ rows } = await pool.query(UPDATE_QUERY, [status, result || null, id]));
+            } else {
+                throw e;
+            }
+        }
 
         if (rows.length === 0) {
             return res.status(404).json({ success: false, message: '해당 유지보수를 찾을 수 없음' });
