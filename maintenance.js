@@ -3,7 +3,7 @@ const router = express.Router();
 const { pool } = require('./db');
 
 // 전체 유지보수 이력 조회
-const LIST_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.description, m.result, m.status, m.scheduled_at, m.completed_at, m.technician_id, t.name AS technician_name, ' +
+const LIST_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.description, m.result, m.ai_summary, m.status, m.scheduled_at, m.completed_at, m.technician_id, t.name AS technician_name, ' +
     'e.name AS equipment_name, e.mr_space_id, ' +
     'mn.title AS manual_title, mn.category AS manual_category, mn.content_url, ' +
     'a.id AS alarm_id, a.alarm_code, a.severity, a.description AS alarm_desc, a.triggered_at' +
@@ -20,7 +20,7 @@ const LIST_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.description, m.r
     ' ORDER BY m.scheduled_at ASC';
 
 // 상태로 유지보수 이력 조회
-const LIST_BY_STATUS_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.description, m.result, m.status, m.scheduled_at, m.completed_at, m.technician_id, t.name AS technician_name, ' +
+const LIST_BY_STATUS_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.description, m.result, m.ai_summary, m.status, m.scheduled_at, m.completed_at, m.technician_id, t.name AS technician_name, ' +
     'e.name AS equipment_name, e.mr_space_id, ' +
     'mn.title AS manual_title, mn.category AS manual_category, mn.content_url, ' +
     'a.id AS alarm_id, a.alarm_code, a.severity, a.description AS alarm_desc, a.triggered_at' +
@@ -38,7 +38,7 @@ const LIST_BY_STATUS_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.descri
     ' ORDER BY m.scheduled_at ASC';
 
 // 유지보수 이력 상세 정보 쿼리
-const DETAIL_QUERY = 'SELECT m.id, m.work_type, m.description, m.result, m.status,' +
+const DETAIL_QUERY = 'SELECT m.id, m.work_type, m.description, m.result, m.ai_summary, m.status,' +
     ' m.scheduled_at, m.completed_at, m.technician_id,' +
     ' e.id AS equipment_id, e.name AS equipment_name, e.mr_space_id,' +
     ' mn.id AS manual_id, mn.title AS manual_title,' +
@@ -169,6 +169,7 @@ router.get('/:id', async (req, res) => {
                 work_type:     row.work_type,
                 description:   row.description,
                 result:        row.result,
+                ai_summary:    row.ai_summary,
                 status:        row.status,
                 scheduled_at:  row.scheduled_at,
                 completed_at:  row.completed_at,
