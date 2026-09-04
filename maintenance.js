@@ -54,14 +54,16 @@ const DETAIL_QUERY = 'SELECT m.id, m.work_type, m.description, m.result, m.ai_su
 
 // 유지보수 이력 업데이트 쿼리
 // ai_summary 컬럼이 있으면 같이 저장하고, 없는 DB(42703)면 자동으로 아래 축약 쿼리로 폴백한다.
+// status는 enum 타입이라 CASE 비교($n = 'completed')는 별도 text 파라미터로 넘긴다(status 값을 두 번 전달).
 const UPDATE_QUERY_WITH_SUMMARY = 'UPDATE maintenance_log ' +
     'SET status = $1, result = $2, ai_summary = $3, ' +
-    'completed_at = CASE WHEN $1 = \'completed\' THEN NOW() ELSE completed_at END ' +
-    'WHERE id = $4 ' +
+    'completed_at = CASE WHEN $4 = \'completed\' THEN NOW() ELSE completed_at END ' +
+    'WHERE id = $5 ' +
     'RETURNING *';
 const UPDATE_QUERY = 'UPDATE maintenance_log ' +
-    'SET status = $1, result = $2, completed_at = CASE WHEN $1 = \'completed\' THEN NOW() ELSE completed_at END ' +
-    'WHERE id = $3 ' +
+    'SET status = $1, result = $2, ' +
+    'completed_at = CASE WHEN $3 = \'completed\' THEN NOW() ELSE completed_at END ' +
+    'WHERE id = $4 ' +
     'RETURNING *';
 
 
@@ -218,11 +220,11 @@ router.patch('/:id', async (req, res) => {
         let rows;
         try {
             ({ rows } = await pool.query(UPDATE_QUERY_WITH_SUMMARY,
-                [status, result || null, ai_summary || null, id]));
+                [status, result || null, ai_summary || null, status, id]));
         } catch (e) {
             if (e.code === '42703') { // ai_summary 컬럼 없음 → 요약 없이 저장
                 console.warn('[MAINTENANCE] ai_summary 컬럼 없음 - 요약 제외하고 저장');
-                ({ rows } = await pool.query(UPDATE_QUERY, [status, result || null, id]));
+                ({ rows } = await pool.query(UPDATE_QUERY, [status, result || null, status, id]));
             } else {
                 throw e;
             }
