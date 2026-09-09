@@ -96,7 +96,7 @@ router.post('/', upload.single('audio'), async (req, res) => {
         // maintenance_id 있으면 DB에 저장
         if (maintenance_id) {
             await pool.query(
-                'UPDATE ttt.maintenance_log SET ai_summary = $1 WHERE id = $2',
+                'UPDATE ttt.maintenance SET ai_summary = $1 WHERE id = $2',
                 [summary, maintenance_id]
             );
             console.log('[SUMMARY] DB 저장 완료:', maintenance_id);

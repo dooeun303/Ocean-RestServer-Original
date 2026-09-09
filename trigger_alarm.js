@@ -52,8 +52,8 @@ async function triggerAlarm() {
   }
 }
 
-// POST /api/alarm/trigger/start — 주기 발생 시작
-router.post('/start', (req, res) => {
+// POST /api/alarms — 주기 발생 시작 (구 /api/alarm/trigger/start)
+router.post('/', (req, res) => {
   if (intervalId) {
     return res.status(400).json({ success: false, message: '이미 실행 중입니다.' });
   }
@@ -68,8 +68,8 @@ router.post('/start', (req, res) => {
   res.json({ success: true, message: `${INTERVAL_SEC}초마다 알람 발생 시작` });
 });
 
-// POST /api/alarm/trigger/stop — 주기 발생 정지
-router.post('/stop', (req, res) => {
+// DELETE /api/alarms/active — 주기 발생 정지 (구 /api/alarm/trigger/stop)
+router.delete('/active', (req, res) => {
   if (!intervalId) {
     return res.status(400).json({ success: false, message: '실행 중이 아닙니다.' });
   }
@@ -81,8 +81,8 @@ router.post('/stop', (req, res) => {
   res.json({ success: true, message: '알람 발생 정지' });
 });
 
-// GET /api/alarm/trigger/status — 현재 상태 확인
-router.get('/status', (req, res) => {
+// GET /api/alarms/trigger-status — 현재 상태 확인 (구 /api/alarm/trigger/status)
+router.get('/trigger-status', (req, res) => {
   res.json({
     success: true,
     running: intervalId !== null, // 실행 중 인지

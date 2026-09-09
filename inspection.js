@@ -13,7 +13,7 @@ router.get('/today', async (req, res) => {
         e.id                  AS equipment_id,
         e.name                AS equipment_name,
         e.equipment_type,
-        p.location,
+        p.plant_add           AS location,
         ri.id                 AS inspection_id,
         ri.result             AS inspection_result,
         ri.note               AS inspection_note,
@@ -28,7 +28,7 @@ router.get('/today', async (req, res) => {
         a.severity            AS latest_alarm_severity,
         a.triggered_at        AS latest_alarm_at
       FROM equipment e
-      JOIN plant p ON e.plant_id = p.id
+      JOIN plant_info p ON e.plant_id = p.plant_id
       LEFT JOIN LATERAL (
         SELECT id, result, note, scheduled_at, completed_at
         FROM remote_inspection
@@ -61,60 +61,16 @@ router.get('/today', async (req, res) => {
 });
 
 
-// =============================================
-// 2. 설비 센서 최신값 + 정상범위 비교
-//    GET /api/inspections/equipment/:equipmentId/sensors
-// =============================================
-router.get('/equipment/:equipmentId/sensors', async (req, res) => {
-  const { equipmentId } = req.params;
-
-  try {
-    const { rows } = await pool.query(`
-      SELECT
-        s.id            AS sensor_id,
-        s.sensor_type,
-        s.name          AS sensor_name,
-        s.unit,
-        s.min_threshold,
-        s.max_threshold,
-        sr.value,
-        sr.measured_at,
-        CASE
-          WHEN s.max_threshold IS NOT NULL AND sr.value > s.max_threshold THEN 'critical'
-          WHEN s.min_threshold IS NOT NULL AND sr.value < s.min_threshold THEN 'warning'
-          ELSE 'normal'
-        END             AS status
-      FROM sensor s
-      JOIN LATERAL (
-        SELECT value, measured_at
-        FROM sensor_reading
-        WHERE sensor_id = s.id
-        ORDER BY measured_at DESC
-        LIMIT 1
-      ) sr ON true
-      WHERE s.equipment_id = $1
-      ORDER BY s.sensor_type
-    `, [equipmentId]);
-
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: '설비를 찾을 수 없습니다.' });
-    }
-
-    res.json({ success: true, data: rows });
-  } catch (err) {
-    console.error('[GET /inspections/equipment/:id/sensors]', err);
-    res.status(500).json({ success: false, message: '서버 오류' });
-  }
-});
+// (설비 센서 최신값 조회는 GET /api/equipment/:id/sensors 로 이동)
 
 
 // =============================================
-// 3. 원격점검 결과 저장 (기존 레코드 UPDATE)
-//    PATCH /api/inspections/:inspectionId
+// 2. 원격점검 결과 저장 (기존 레코드 UPDATE)
+//    PATCH /api/inspections/:id
 //    body: { equipment_id, inspector_id, result, note }
 // =============================================
-router.patch('/:inspectionId', async (req, res) => {
-  const { inspectionId } = req.params;
+router.patch('/:id', async (req, res) => {
+  const inspectionId = req.params.id;
   const { equipment_id, inspector_id, result, note } = req.body;
 
   // 유효성 검사
