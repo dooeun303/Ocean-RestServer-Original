@@ -203,4 +203,29 @@ router.patch('/:id/end', async (req, res) => {
     }
 });
 
+// 7. PATCH /api/support-calls/:id/result - MR이 원격지원 결과 저장
+router.patch('/:id/result', async (req, res) => {
+    const { id } = req.params;
+    const { support_result, support_note } = req.body;
+    const ALLOWED = ['RESOLVED', 'CANCELED', 'RESUPPORT', 'ETC'];
+    if (!ALLOWED.includes(support_result))
+        return res.status(400).json({ success: false, message: 'support_result 값이 올바르지 않습니다.' });
+    try {
+        const { rows } = await pool.query(
+            `UPDATE video_call
+                SET support_result = $2, support_note = $3, support_saved_at = NOW(),
+                    status   = CASE WHEN status <> 'ended' THEN 'ended' ELSE status END,
+                    ended_at = COALESCE(ended_at, NOW())
+              WHERE id = $1 RETURNING *`,
+            [id, support_result, support_note || null]
+        );
+        if (rows.length === 0)
+            return res.status(404).json({ success: false, message: '해당 통화를 찾을 수 없습니다.' });
+        return res.status(200).json({ success: true, data: toRow(rows[0]) });
+    } catch (err) {
+        console.error('[SUPPORT_CALL] 결과 저장 오류:', err.message);
+        return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+});
+
 module.exports = router;
