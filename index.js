@@ -23,8 +23,10 @@ const sttRouter = require('./stt'); // 음성 전사(STT) 프록시 라우터 �
 const { startSttService } = require('./stt_autostart'); // faster-whisper 서비스 자동 실행
 const summarizeRouter = require('./summarize'); // STT 원문 → 로컬 LLM(Ollama) 요약
 const manualRouter = require('./manual');
-const technicianRouter = require('./technician');
-const supportCallRouter = require('./support_call'); // AR→MR 지원 요청(화상통화) 큐 라우터
+const userRouter = require('./technician'); // 사용자(작업자/전문가) 목록 - 내부는 user_info 조회
+const supportCallRouter = require('./support_call'); // AR→MR 지원 요청(원격지원) 큐 라우터
+const codeRouter = require('./codes'); // system_code 공통코드 조회
+const authRouter = require('./auth'); // QR 로그인 (MR/AR 공용) - JWT
 
 const app = express();
 const server = http.createServer(app);
@@ -39,21 +41,23 @@ app.use((req, res, next) => {
 });
 
 // 라우터 등록
-app.use('/api/equipment', equipmentRouter); // MR 장비 정보 라우터
-app.use('/api/ar/device', arRouter);   // AR 장비 정보 라우터 (QR)
-app.use('/rtc', agoraRouter); // ← 아고라 통신용 라우터 추가
-app.use('/api/alarm/trigger', alarmTriggerRouter); // 알람 트리거(발생) 라우터 
-app.use('/api/alarm', alarmRouter); // 알람 조회 라우터
-app.use('/api/maintenance', maintenanceRouter); // 유지보수 이력 라우터
-app.use('/api/inspections', inspectionRouter); // 원격점검 라우터
+app.use('/api/auth', authRouter);                    // POST /qr-login · POST /logout · GET /me
+app.use('/api/equipment', equipmentRouter);          // GET /:id, GET /:id/sensors
+app.use('/api/ar/device', arRouter);                 // AR 전용 응답 포맷 (AR 앱이 소유)
+app.use('/api/rtc', agoraRouter);                    // Agora 토큰
+app.use('/api/alarms', alarmRouter);                 // GET /            (목록)
+app.use('/api/alarms', alarmTriggerRouter);          // POST / · DELETE /active · GET /trigger-status
+app.use('/api/maintenances', maintenanceRouter);
+app.use('/api/inspections', inspectionRouter);       // GET /today · PATCH /:id
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/files', fileRouter);
-app.use('/api/summary', summaryRouter);
-app.use('/api/stt', sttRouter); // Unity SpeechToTextTestDemo → MP3/WAV 전사
-app.use('/api/summarize', summarizeRouter); // 전사 원문 → 로컬 LLM 요약
-app.use('/api/manual', manualRouter);
-app.use('/api/technician', technicianRouter);
+app.use('/api/manuals', manualRouter);
+app.use('/api/users', userRouter);
 app.use('/api/support-calls', supportCallRouter);
+app.use('/api/codes', codeRouter);                   // GET /?group=RESP10
+app.use('/api/ai/voice-summary', summaryRouter);     // 오디오 → 전사+요약 (OpenAI)
+app.use('/api/ai/transcribe', sttRouter);            // 오디오 → 전사 (faster-whisper)
+app.use('/api/ai/summarize', summarizeRouter);       // 텍스트 → 요약 (Ollama)
 
 
 

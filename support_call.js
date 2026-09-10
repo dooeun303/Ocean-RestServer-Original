@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('./db');
 
-// 지원 요청(AR이 걸고 MR이 받는 화상통화) - 기존 video_call 테이블을 그대로 쓴다
+// 지원 요청(AR이 걸고 MR이 받는 원격지원 통화) - remote_support 테이블 사용 (구 video_call)
 // (initiator/receiver platform이 이미 AR/MR/monitoring 뭐든 되게 설계돼 있었는데 실제로 쓰인 적은
 // 없었음). MR이 항상 헤드셋을 쓰고 있는 게 아니라서 1회성 팝업 알림 대신, 수락되기 전까지
 // status='ringing'으로 DB에 남아있는 큐 방식으로 구현한다 - MR은 아무 때나 목록을 열어 확인 가능.
@@ -10,13 +10,15 @@ const { pool } = require('./db');
 const LIST_QUERY =
     `SELECT vc.id, vc.initiator_id, vc.receiver_id, vc.initiator_platform, vc.receiver_platform,
         vc.status, vc.channel_name, vc.created_at, vc.started_at, vc.ended_at, vc.maintenance_log_id,
-        m.description AS maintenance_description, m.work_type,
+        m.description AS maintenance_description, m.work_type, m.manual_id,
+        mn.title AS manual_title,
         e.id AS equipment_id, e.name AS equipment_name,
-        t.name AS initiator_name
-     FROM video_call vc
-     LEFT JOIN maintenance_log m ON m.id = vc.maintenance_log_id
+        t.user_nm AS initiator_name
+     FROM remote_support vc
+     LEFT JOIN maintenance m ON m.id = vc.maintenance_log_id
+     LEFT JOIN manual mn ON mn.id = m.manual_id
      LEFT JOIN equipment e ON e.id = m.equipment_id
-     LEFT JOIN technician t ON t.id = vc.initiator_id
+     LEFT JOIN user_info t ON t.user_id = vc.initiator_id
      WHERE vc.receiver_platform = 'MR'`;
 
 // 2026-08-26: "이미 끝난 지원요청 말고 새로 수신된 지원요청이 1페이지에 떠야 해" - started_at은
@@ -52,6 +54,9 @@ function toRow(row) {
         equipment_name: row.equipment_name,
         maintenance_description: row.maintenance_description,
         work_type: row.work_type,
+        // 작업 가이드(WorkGuidePanel)가 이 매뉴얼의 스텝 목록을 불러오는 데 씀
+        manual_id: row.manual_id,
+        manual_title: row.manual_title,
     };
 }
 
@@ -65,7 +70,7 @@ router.post('/', async (req, res) => {
 
     try {
         const { rows } = await pool.query(
-            `INSERT INTO video_call
+            `INSERT INTO remote_support
                 (id, initiator_id, receiver_id, initiator_platform, receiver_platform, status, channel_name, maintenance_log_id)
              VALUES
                 (gen_random_uuid(), $1, 'ANY', 'AR', 'MR', 'ringing', 'support_' || gen_random_uuid(), $2)
@@ -107,6 +112,8 @@ router.get('/', async (req, res) => {
     }
 });
 
+// (원격지원 결과 선택지 조회는 GET /api/codes?group=RESP11 으로 이동)
+
 // 3. GET /api/support-calls/:id - AR이 자기 요청이 수락/거절됐는지 폴링으로 확인
 router.get('/:id', async (req, res) => {
     const { id } = req.params;
@@ -129,7 +136,7 @@ router.patch('/:id/accept', async (req, res) => {
 
     try {
         const { rows } = await pool.query(
-            `UPDATE video_call SET status = 'active', started_at = NOW(), receiver_id = COALESCE($2, receiver_id)
+            `UPDATE remote_support SET status = 'active', started_at = NOW(), receiver_id = COALESCE($2, receiver_id)
              WHERE id = $1 AND status = 'ringing' RETURNING *`,
             [id, receiver_id || null]
         );
@@ -159,7 +166,7 @@ router.patch('/:id/reject', async (req, res) => {
 
     try {
         const { rows } = await pool.query(
-            `UPDATE video_call SET status = 'missed' WHERE id = $1 AND status = 'ringing' RETURNING *`,
+            `UPDATE remote_support SET status = 'missed' WHERE id = $1 AND status = 'ringing' RETURNING *`,
             [id]
         );
 
@@ -188,7 +195,7 @@ router.patch('/:id/end', async (req, res) => {
 
     try {
         const { rows } = await pool.query(
-            `UPDATE video_call SET status = 'ended', ended_at = NOW() WHERE id = $1 RETURNING *`,
+            `UPDATE remote_support SET status = 'ended', ended_at = NOW() WHERE id = $1 RETURNING *`,
             [id]
         );
 
@@ -207,12 +214,12 @@ router.patch('/:id/end', async (req, res) => {
 router.patch('/:id/result', async (req, res) => {
     const { id } = req.params;
     const { support_result, support_note } = req.body;
-    const ALLOWED = ['RESOLVED', 'CANCELED', 'RESUPPORT', 'ETC'];
+    const ALLOWED = ['RSUP01', 'RSUP02', 'RSUP03', 'RSUP04']; // system_code RESP11 (원격지원결과 구분)
     if (!ALLOWED.includes(support_result))
         return res.status(400).json({ success: false, message: 'support_result 값이 올바르지 않습니다.' });
     try {
         const { rows } = await pool.query(
-            `UPDATE video_call
+            `UPDATE remote_support
                 SET support_result = $2, support_note = $3, support_saved_at = NOW(),
                     status   = CASE WHEN status <> 'ended' THEN 'ended' ELSE status END,
                     ended_at = COALESCE(ended_at, NOW())

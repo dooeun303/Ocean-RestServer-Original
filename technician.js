@@ -6,7 +6,7 @@ const { pool } = require('./db');
 router.get('/', async (req, res) => {
     try {
         const { rows } = await pool.query(
-            'SELECT id, name, role, department FROM ttt.technician ORDER BY name ASC'
+            'SELECT user_id AS id, user_nm AS name, NULL AS role, company AS department FROM user_info ORDER BY user_nm ASC'
         );
         return res.status(200).json({ success: true, data: rows });
     } catch (err) {

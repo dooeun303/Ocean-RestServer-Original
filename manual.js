@@ -51,4 +51,23 @@ router.get('/equipment', async (req, res) => {
     }
 });
 
+
+// =============================================
+// 3. GET /api/manual/:id/steps
+//    매뉴얼의 작업 스텝 목록 (WorkGuidePanel 작업 가이드용)
+//    title = 짧은 지시문, description = 전문가용 상세 설명
+// =============================================
+router.get('/:id/steps', async (req, res) => {
+    try {
+        const { rows } = await pool.query(
+            'SELECT step_no, title, description, model_url FROM ttt.manual_step WHERE manual_id = $1 ORDER BY step_no ASC',
+            [req.params.id]
+        );
+        return res.status(200).json({ success: true, data: rows });
+    } catch (err) {
+        console.error('[MANUAL] 스텝 조회 오류:', err.message);
+        return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+});
+
 module.exports = router;
