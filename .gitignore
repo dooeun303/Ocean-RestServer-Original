@@ -2,3 +2,6 @@
 .venv-stt/
 __pycache__/
 *.pyc
+
+# 원격지원 통화 녹화 mp4 (support_call.js) - 수백 MB라 커밋 대상 아님
+uploads/recordings/

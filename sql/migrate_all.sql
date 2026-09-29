@@ -224,3 +224,24 @@ CREATE TABLE IF NOT EXISTS ttt.ai_prediction (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_prediction_equipment    ON ttt.ai_prediction (equipment_id);
 CREATE INDEX IF NOT EXISTS idx_ai_prediction_predicted_at ON ttt.ai_prediction (prediction_predicted_at DESC);
+
+
+-- ── 8. remote_support_recording (원격지원 통화 녹화 mp4) ──
+-- source: ar_stream(MR이 받은 AR 영상) · mr_view(MR 시점 화면) · ar_local(AR 기기 자체 녹화)
+-- remote_support_id 는 NULL 허용 - 지원요청 큐를 안 거친 통화(시그널링 직접 호출)도 파일은 남긴다.
+CREATE TABLE IF NOT EXISTS ttt.remote_support_recording (
+    id                uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    remote_support_id uuid REFERENCES ttt.remote_support(id) ON DELETE SET NULL,
+    channel_name      varchar(200),
+    source            varchar(20) NOT NULL,
+    file_name         varchar(255) NOT NULL,
+    url               text NOT NULL,
+    size              bigint,
+    created_at        timestamptz DEFAULT now(),
+    CONSTRAINT remote_support_recording_source_check CHECK (source IN ('ar_stream','mr_view','ar_local'))
+);
+CREATE INDEX IF NOT EXISTS idx_remote_support_recording_call ON ttt.remote_support_recording (remote_support_id);
+-- AR 유지보수 전체 녹화(시작~결과 저장)는 통화 전부터라 유지보수 id로도 연결한다. 샘플 작업은 DB에 없는
+-- 고정 UUID를 쓰기도 해서 FK 없이 문자열로 둔다.
+ALTER TABLE ttt.remote_support_recording ADD COLUMN IF NOT EXISTS maintenance_id varchar(64);
+CREATE INDEX IF NOT EXISTS idx_remote_support_recording_maint ON ttt.remote_support_recording (maintenance_id);

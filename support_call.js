@@ -1,6 +1,24 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const { pipeline } = require('stream/promises');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 const { pool } = require('./db');
+
+// 원격지원 녹화 mp4 저장 폴더 - index.js의 /uploads 정적 서빙 아래라 /uploads/recordings/... 로 바로 재생 가능
+const RECORDING_DIR = path.join(__dirname, 'uploads', 'recordings');
+// 영상과 합쳐지기 전의 음성(.aac)/수신 중인 영상이 잠깐 머무는 곳 - 정적 서빙 대상이지만 목록엔 안 나옴
+const RECORDING_TMP_DIR = path.join(RECORDING_DIR, 'tmp');
+fs.mkdirSync(RECORDING_TMP_DIR, { recursive: true });
+const RECORDING_SOURCES = ['mr_view', 'ar_local'];
+
+// 영상+음성 합치기용 ffmpeg - npm의 ffmpeg-static(바이너리 동봉)을 우선 쓰고, 없으면 FFMPEG_PATH 또는 PATH의 ffmpeg.
+const FFMPEG = (() => {
+    try { return require('ffmpeg-static'); } catch { return process.env.FFMPEG_PATH || 'ffmpeg'; }
+})();
+const execFileAsync = promisify(execFile);
 
 // 지원 요청(AR이 걸고 MR이 받는 원격지원 통화) - remote_support 테이블 사용 (구 video_call)
 // (initiator/receiver platform이 이미 AR/MR/monitoring 뭐든 되게 설계돼 있었는데 실제로 쓰인 적은
@@ -231,6 +249,159 @@ router.patch('/:id/result', async (req, res) => {
         return res.status(200).json({ success: true, data: toRow(rows[0]) });
     } catch (err) {
         console.error('[SUPPORT_CALL] 결과 저장 오류:', err.message);
+        return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+});
+
+// ── 원격지원 녹화 (MR: MrCallRecorder.cs / AR: InmoCallRecorder.cs) ──
+// body = 파일 바이너리 그대로(멀티파트 아님). 수백 MB가 될 수 있어서 multer/메모리 버퍼 없이 요청
+// 스트림을 바로 파일로 흘려 쓴다.
+//
+// 각 기기는 영상(mp4)과 통화 음성 전체(aac, 양쪽 목소리 믹스)를 따로 녹화해서 음성 → 영상 순서로
+// 같은 파일명(stem)으로 올린다. Agora 로컬 영상 녹화엔 자기 마이크만 들어가서, 대화 전체를 영상에
+// 넣으려면 서버에서 합쳐야 하기 때문.
+//   ?part=audio      → tmp에 보관만 하고 202 (DB 기록 없음)
+//   (영상, offset_ms) → 같은 stem의 음성이 tmp에 있으면 ffmpeg로 음성 트랙을 바꿔 끼워 mp4 하나로 저장.
+//                       offset_ms = 음성이 영상보다 먼저 시작된 시간 - 그만큼 음성 앞을 잘라 싱크를 맞춘다.
+// 합치기에 실패하면(ffmpeg 없음 등) 영상은 그대로, 음성은 별도 행(.aac)으로 남긴다 - 파일은 절대 안 버림.
+async function saveRecording(req, res, supportId, channelName, maintenanceId = null) {
+    const { source, filename, part } = req.query;
+    if (!RECORDING_SOURCES.includes(source))
+        return res.status(400).json({ success: false, message: 'source 값이 올바르지 않습니다.' });
+
+    const isAudio = part === 'audio';
+    const base = path.basename(filename || `${source}${isAudio ? '.aac' : '.mp4'}`).replace(/[^\w.\-]/g, '_');
+    // 같은 통화(+같은 stem)의 음성/영상이 서로를 찾을 수 있게 tmp 파일명에 통화 키를 붙인다.
+    const callKey = String(supportId || maintenanceId || channelName).replace(/[^\w\-]/g, '_');
+    const stem = path.parse(base).name;
+    const tmpPath = path.join(RECORDING_TMP_DIR, `${callKey}__${base}`);
+
+    try {
+        await pipeline(req, fs.createWriteStream(tmpPath));
+    } catch (err) {
+        console.error('[SUPPORT_CALL] 녹화 수신 오류:', err.message);
+        fs.promises.unlink(tmpPath).catch(() => {});
+        return res.status(500).json({ success: false, message: '파일 수신 실패' });
+    }
+    if ((await fs.promises.stat(tmpPath)).size === 0) {
+        fs.promises.unlink(tmpPath).catch(() => {});
+        return res.status(400).json({ success: false, message: '빈 파일입니다.' });
+    }
+
+    if (isAudio) {
+        console.log(`[SUPPORT_CALL] 녹화 음성 수신 (${source}) - 영상 대기:`, base);
+        return res.status(202).json({ success: true, pending: true });
+    }
+
+    try {
+        const audioTmp = path.join(RECORDING_TMP_DIR, `${callKey}__${stem}.aac`);
+        const hasAudio = fs.existsSync(audioTmp);
+        const stored = `${Date.now()}_${base}`;
+        const finalPath = path.join(RECORDING_DIR, stored);
+        let merged = false;
+
+        if (hasAudio) {
+            const offsetSec = Math.max(0, Number(req.query.offset_ms) || 0) / 1000;
+            try {
+                await execFileAsync(FFMPEG, [
+                    '-y', '-loglevel', 'error',
+                    '-i', tmpPath,
+                    '-ss', offsetSec.toFixed(3), '-i', audioTmp,
+                    '-map', '0:v:0', '-map', '1:a:0',
+                    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '96k',
+                    '-movflags', '+faststart',
+                    finalPath,
+                ]);
+                merged = true;
+                await fs.promises.unlink(tmpPath);
+                await fs.promises.unlink(audioTmp);
+            } catch (err) {
+                console.error('[SUPPORT_CALL] 영상+음성 합치기 실패 - 따로 저장:', err.message);
+                fs.promises.unlink(finalPath).catch(() => {});
+            }
+        }
+
+        if (!merged) {
+            await fs.promises.rename(tmpPath, finalPath);
+            if (hasAudio) {
+                const audioStored = `${Date.now()}_${stem}.aac`;
+                await fs.promises.rename(audioTmp, path.join(RECORDING_DIR, audioStored));
+                await insertRecording(supportId, channelName, maintenanceId, source, `${stem}.aac`, audioStored);
+            }
+        }
+
+        const row = await insertRecording(supportId, channelName, maintenanceId, source, base, stored);
+        console.log(`[SUPPORT_CALL] 녹화 저장 (${source}, ${merged ? '음성 합침' : hasAudio ? '음성 별도' : '음성 없음'}, ${row.size} bytes):`, stored);
+        return res.status(201).json({ success: true, data: row });
+    } catch (err) {
+        console.error('[SUPPORT_CALL] 녹화 저장 오류:', err.message);
+        return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+}
+
+async function insertRecording(supportId, channelName, maintenanceId, source, fileName, stored) {
+    const size = (await fs.promises.stat(path.join(RECORDING_DIR, stored))).size;
+    const { rows } = await pool.query(
+        `INSERT INTO remote_support_recording (remote_support_id, channel_name, maintenance_id, source, file_name, url, size)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [supportId, channelName, maintenanceId, source, fileName, `/uploads/recordings/${stored}`, size]
+    );
+    return rows[0];
+}
+
+// 8. POST /api/support-calls/recordings?(maintenance_id= | channel_name=)&source=&filename= - AR
+//  - maintenance_id: 유지보수 시작~결과 저장 전체 녹화(MaintenanceTutorialDemo). 통화 전부터 녹화라 call id가
+//    없다 - 그 유지보수로 걸었던 가장 최근 원격지원 통화에 연결하고, 통화 없이 끝났으면 유지보수 id로만 남긴다.
+//  - channel_name: MR이 시그널링으로 건 통화(InmoCallManager) - 메시지에 call id가 없어서 채널명으로.
+//    지원요청 channel_name은 'support_<uuid>'라 통화마다 유일하다. 못 찾으면 id 없이 파일만 남긴다.
+router.post('/recordings', async (req, res) => {
+    const { channel_name, maintenance_id } = req.query;
+    if (!channel_name && !maintenance_id)
+        return res.status(400).json({ success: false, message: 'maintenance_id 또는 channel_name이 필요합니다.' });
+    try {
+        if (maintenance_id) {
+            const { rows } = await pool.query(
+                `SELECT id, channel_name FROM remote_support WHERE maintenance_log_id::text = $1 ORDER BY created_at DESC LIMIT 1`,
+                [maintenance_id]
+            );
+            return saveRecording(req, res, rows[0]?.id || null, rows[0]?.channel_name || null, maintenance_id);
+        }
+        const { rows } = await pool.query(
+            `SELECT id FROM remote_support WHERE channel_name = $1 ORDER BY created_at DESC LIMIT 1`,
+            [channel_name]
+        );
+        return saveRecording(req, res, rows[0]?.id || null, channel_name);
+    } catch (err) {
+        console.error('[SUPPORT_CALL] 녹화 통화 조회 오류:', err.message);
+        return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+});
+
+// 9. POST /api/support-calls/:id/recordings?source=&filename= - MR
+router.post('/:id/recordings', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { rows } = await pool.query(`SELECT channel_name FROM remote_support WHERE id = $1`, [id]);
+        if (rows.length === 0)
+            return res.status(404).json({ success: false, message: '해당 통화를 찾을 수 없습니다.' });
+        return saveRecording(req, res, id, rows[0].channel_name);
+    } catch (err) {
+        console.error('[SUPPORT_CALL] 녹화 통화 조회 오류:', err.message);
+        return res.status(500).json({ success: false, message: '서버 오류' });
+    }
+});
+
+// 10. GET /api/support-calls/:id/recordings - 통화별 녹화 목록 (url은 /uploads/recordings/... 로 바로 재생)
+router.get('/:id/recordings', async (req, res) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT id, source, file_name, url, size, created_at FROM remote_support_recording
+              WHERE remote_support_id = $1 ORDER BY created_at`,
+            [req.params.id]
+        );
+        return res.status(200).json({ success: true, data: rows });
+    } catch (err) {
+        console.error('[SUPPORT_CALL] 녹화 목록 오류:', err.message);
         return res.status(500).json({ success: false, message: '서버 오류' });
     }
 });

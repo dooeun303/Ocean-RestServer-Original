@@ -78,6 +78,16 @@ function initWebSocket(server) {
                     console.log('[WS] MR로 작업 완료 포워딩');
                     sendTo('MR', msg);
                 }
+                // AR 위치 갱신 (AR→MR, 통화 상태와 무관하게 항상 전달 - AR이 QR로 설비를 인식할
+                // 때마다 보내고, MR은 디지털 트윈에서 해당 설비에 "AR 작업자 위치" 표시를 옮긴다)
+                else if (msg.type === 'ar_location') {
+                    console.log(`[WS] MR로 AR 위치 포워딩: equipmentId=${msg.equipmentId}`);
+                    sendTo('MR', msg);
+                }
+                // AR 6DoF 카메라 로컬 좌표 스트리밍 (AR→MR, 0.3초 간격 - 빈번해서 로그는 생략)
+                else if (msg.type === 'ar_pose') {
+                    sendTo('MR', msg);
+                }
             } catch (err) {
                 console.error('[WS] 메시지 파싱 오류:', err.message);
             }
