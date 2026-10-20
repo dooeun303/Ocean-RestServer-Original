@@ -227,7 +227,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_prediction_predicted_at ON ttt.ai_prediction (
 
 
 -- ── 8. remote_support_recording (원격지원 통화 녹화 mp4) ──
--- source: ar_stream(MR이 받은 AR 영상) · mr_view(MR 시점 화면) · ar_local(AR 기기 자체 녹화)
+-- source: mr_view(MR 시점 화면, 원격지원 통화 구간) · ar_local(AR 카메라, 유지보수 시작~결과 저장)
+-- 둘 다 통화 음성 전체(양쪽 목소리)가 합쳐진 mp4.
 -- remote_support_id 는 NULL 허용 - 지원요청 큐를 안 거친 통화(시그널링 직접 호출)도 파일은 남긴다.
 CREATE TABLE IF NOT EXISTS ttt.remote_support_recording (
     id                uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -238,8 +239,12 @@ CREATE TABLE IF NOT EXISTS ttt.remote_support_recording (
     url               text NOT NULL,
     size              bigint,
     created_at        timestamptz DEFAULT now(),
-    CONSTRAINT remote_support_recording_source_check CHECK (source IN ('ar_stream','mr_view','ar_local'))
+    CONSTRAINT remote_support_recording_source_check CHECK (source IN ('mr_view','ar_local'))
 );
+-- 예전 버전으로 이미 만든 테이블엔 ar_stream이 허용값에 남아 있어서 다시 건다(멱등).
+ALTER TABLE ttt.remote_support_recording DROP CONSTRAINT IF EXISTS remote_support_recording_source_check;
+ALTER TABLE ttt.remote_support_recording ADD  CONSTRAINT remote_support_recording_source_check
+    CHECK (source IN ('mr_view','ar_local'));
 CREATE INDEX IF NOT EXISTS idx_remote_support_recording_call ON ttt.remote_support_recording (remote_support_id);
 -- AR 유지보수 전체 녹화(시작~결과 저장)는 통화 전부터라 유지보수 id로도 연결한다. 샘플 작업은 DB에 없는
 -- 고정 UUID를 쓰기도 해서 FK 없이 문자열로 둔다.

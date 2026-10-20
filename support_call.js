@@ -349,28 +349,19 @@ async function insertRecording(supportId, channelName, maintenanceId, source, fi
     return rows[0];
 }
 
-// 8. POST /api/support-calls/recordings?(maintenance_id= | channel_name=)&source=&filename= - AR
-//  - maintenance_id: 유지보수 시작~결과 저장 전체 녹화(MaintenanceTutorialDemo). 통화 전부터 녹화라 call id가
-//    없다 - 그 유지보수로 걸었던 가장 최근 원격지원 통화에 연결하고, 통화 없이 끝났으면 유지보수 id로만 남긴다.
-//  - channel_name: MR이 시그널링으로 건 통화(InmoCallManager) - 메시지에 call id가 없어서 채널명으로.
-//    지원요청 channel_name은 'support_<uuid>'라 통화마다 유일하다. 못 찾으면 id 없이 파일만 남긴다.
+// 8. POST /api/support-calls/recordings?maintenance_id=&source=&filename= - AR
+// 유지보수 시작~결과 저장 전체 녹화(MaintenanceTutorialDemo). 통화 전부터 녹화라 call id가 없다 - 그
+// 유지보수로 걸었던 가장 최근 원격지원 통화에 연결하고, 통화 없이 끝났으면 유지보수 id로만 남긴다.
 router.post('/recordings', async (req, res) => {
-    const { channel_name, maintenance_id } = req.query;
-    if (!channel_name && !maintenance_id)
-        return res.status(400).json({ success: false, message: 'maintenance_id 또는 channel_name이 필요합니다.' });
+    const { maintenance_id } = req.query;
+    if (!maintenance_id)
+        return res.status(400).json({ success: false, message: 'maintenance_id는 필수입니다.' });
     try {
-        if (maintenance_id) {
-            const { rows } = await pool.query(
-                `SELECT id, channel_name FROM remote_support WHERE maintenance_log_id::text = $1 ORDER BY created_at DESC LIMIT 1`,
-                [maintenance_id]
-            );
-            return saveRecording(req, res, rows[0]?.id || null, rows[0]?.channel_name || null, maintenance_id);
-        }
         const { rows } = await pool.query(
-            `SELECT id FROM remote_support WHERE channel_name = $1 ORDER BY created_at DESC LIMIT 1`,
-            [channel_name]
+            `SELECT id, channel_name FROM remote_support WHERE maintenance_log_id::text = $1 ORDER BY created_at DESC LIMIT 1`,
+            [maintenance_id]
         );
-        return saveRecording(req, res, rows[0]?.id || null, channel_name);
+        return saveRecording(req, res, rows[0]?.id || null, rows[0]?.channel_name || null, maintenance_id);
     } catch (err) {
         console.error('[SUPPORT_CALL] 녹화 통화 조회 오류:', err.message);
         return res.status(500).json({ success: false, message: '서버 오류' });
