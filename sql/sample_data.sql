@@ -55,31 +55,37 @@ INSERT INTO ttt.manual_step (manual_id, step_no, title, description) VALUES
 ON CONFLICT (manual_id, step_no) DO UPDATE
     SET title = EXCLUDED.title, description = EXCLUDED.description;
 
--- 2-2. 펌프 P-101 정기 점검 매뉴얼 (f1e14556…) - 4스텝
+-- 2-2. 펌프 P-101 정기 점검 매뉴얼 (f1e14556…) - 3스텝
+-- 2026-10-21: 시연용으로 정면 → 측면 → 흡입 배관 연결부 3단계(장비 불필요).
+-- 3단계는 작업자가 위치를 몰라 원격지원을 요청하고, MR이 드로잉으로 연결부를 짚어주는 장면용.
+DELETE FROM ttt.manual_step
+ WHERE manual_id = 'f1e14556-3148-4214-80a6-5294ace22d57' AND step_no > 3;
 INSERT INTO ttt.manual_step (manual_id, step_no, title, description) VALUES
-('f1e14556-3148-4214-80a6-5294ace22d57', 1, '펌프 외관을 확인하세요',
- '케이싱 및 배관 연결부에 누유나 부식 흔적이 있는지 육안으로 확인하세요.'),
-('f1e14556-3148-4214-80a6-5294ace22d57', 2, '진동과 소음을 확인하세요',
- '펌프 가동 중 비정상적인 진동이나 소음이 있는지 확인합니다. 이상이 감지되면 정도를 기록하세요.'),
-('f1e14556-3148-4214-80a6-5294ace22d57', 3, '베어링 온도를 측정하세요',
- '베어링 하우징 표면 온도를 측정합니다. 정상 범위(70도 이하)를 초과하는지 확인하세요.'),
-('f1e14556-3148-4214-80a6-5294ace22d57', 4, '점검 결과를 전문가에게 보고하세요',
- '점검한 항목과 이상 유무를 원격 전문가에게 보고하고, 필요 시 추가 조치 지시를 받으세요.')
+('f1e14556-3148-4214-80a6-5294ace22d57', 1, '펌프 정면을 확인하세요',
+ '펌프 정면의 케이싱과 명판을 확인하세요. 누유, 녹, 이물질이 없는지 봅니다.'),
+('f1e14556-3148-4214-80a6-5294ace22d57', 2, '펌프 측면을 확인하세요',
+ '펌프 측면의 배관 연결부와 고정 볼트를 확인하세요. 물이 새거나 볼트가 빠진 곳이 없는지 봅니다.'),
+('f1e14556-3148-4214-80a6-5294ace22d57', 3, '흡입 배관 연결부를 확인하세요',
+ '펌프로 물이 들어오는 흡입 배관의 연결부(플랜지)를 찾아, 손으로 눌러 흔들림이 없는지 확인하세요.')
 ON CONFLICT (manual_id, step_no) DO UPDATE
     SET title = EXCLUDED.title, description = EXCLUDED.description;
 
 
--- 3. 유지보수 작업 (베어링 매뉴얼 연결) -------------------------------
+-- 3. 유지보수 작업 (정기 점검 매뉴얼 연결) ----------------------------
+-- 2026-10-21: 작업유형(정기점검)에 맞게 베어링 마모 점검 매뉴얼 → 정기 점검 매뉴얼로 변경.
 INSERT INTO ttt.maintenance
     (id, equipment_id, manual_id, work_type, technician_id, description, status, scheduled_at)
 VALUES
     ('d1000000-0000-0000-0000-000000000001',
      '05d469c3-673b-4fd9-9665-acf080511775',
-     '9dec81a9-60dc-4736-abc9-6f7700d7e880',
+     'f1e14556-3148-4214-80a6-5294ace22d57',
      '정기점검', 'tech01',
      '고압펌프 P-101 베어링 마모 의심 - 이상 진동 패턴 감지, 현장 점검 필요',
      'in_progress', now())
 ON CONFLICT (id) DO NOTHING;
+-- 이미 있는 행도 정기 점검 매뉴얼로 맞춘다(위 INSERT는 기존 행을 건드리지 않음).
+UPDATE ttt.maintenance SET manual_id = 'f1e14556-3148-4214-80a6-5294ace22d57'
+ WHERE id = 'd1000000-0000-0000-0000-000000000001';
 
 
 -- 4. 원격지원 요청 (MR SupportCallList 에 뜨는 대기 건) --------------
