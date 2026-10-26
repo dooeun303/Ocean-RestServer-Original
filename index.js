@@ -15,7 +15,6 @@ const agoraRouter = require('./agora');                 // 아고라 통신 라�
 const alarmTriggerRouter = require('./trigger_alarm'); // MR 알람 트리거 라우터
 const alarmRouter = require('./alarm'); // MR 알람 전체 조회 라우터
 const maintenanceRouter = require('./maintenance'); // 유지보수 이력 라우터
-const inspectionRouter = require('./inspection'); // 원격점검 라우터
 const fileRouter = require('./files'); // MR - AR 파일 전송(정보공유) 라우터
 const summaryRouter = require('./summary'); // 화상통화 요약 라우터
 const sttRouter = require('./stt'); // 음성 전사(STT) 프록시 라우터 → 내부 faster-whisper(8900)
@@ -45,7 +44,6 @@ app.use('/api/rtc', agoraRouter);                    // Agora 토큰
 app.use('/api/alarms', alarmRouter);                 // GET /            (목록)
 app.use('/api/alarms', alarmTriggerRouter);          // POST / · DELETE /active · GET /trigger-status
 app.use('/api/maintenances', maintenanceRouter);
-app.use('/api/inspections', inspectionRouter);       // GET /today · PATCH /:id
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/files', fileRouter);
 app.use('/api/manuals', manualRouter);
