@@ -26,10 +26,6 @@ const MSG = {
     MODEL_POINT:          'model_point',           // { pointing, partName, pointX..Z, normX..Z }
     MODEL_EXPLODE:        'model_explode',         // { exploded }
 
-    // AR 작업자 위치(AR→MR) - MR 쪽 표시(ArLocationSync)는 현재 씬에 연결돼 있지 않음
-    AR_LOCATION:          'ar_location',           // { equipmentId }
-    AR_POSE:              'ar_pose',               // { poseX, poseY, poseZ } AR 로컬 좌표
-
     // 고장예지 알람(서버→MR/AR, notify.js)
     ALARM:                'ALARM',
 };
@@ -43,7 +39,6 @@ const RELAY = {
     [MSG.CALL_END]:             { to: 'OTHER', log: m => `통화 종료 channelName=${m.channelName}` },
     [MSG.GUIDE_STEP_CONTROL]:   { to: 'MR',    log: m => `작업가이드 단계 ${m.stepIndex}/${m.stepCount}` },
     [MSG.MAINTENANCE_COMPLETE]: { to: 'MR',    log: () => '작업 완료' },
-    [MSG.AR_LOCATION]:          { to: 'MR',    log: m => `AR 위치 equipmentId=${m.equipmentId}` },
     [MSG.DRAW_START]:           { to: 'AR' },
     [MSG.DRAW_POINT]:           { to: 'AR' },
     [MSG.DRAW_END]:             { to: 'AR' },
@@ -51,7 +46,6 @@ const RELAY = {
     [MSG.MODEL_POINT]:          { to: 'AR' },
     [MSG.MODEL_VIEW]:           { to: 'AR' },
     [MSG.MODEL_EXPLODE]:        { to: 'AR' },
-    [MSG.AR_POSE]:              { to: 'MR' },
 };
 
 module.exports = { MSG, RELAY };
