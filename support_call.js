@@ -87,6 +87,22 @@ router.post('/', async (req, res) => {
     }
 
     try {
+        // 2026-10-23: 같은 유지보수 건에 끝나지 않은 이전 요청/통화가 남아 있으면 먼저 종료한다 - AR 앱이 꺼지거나
+        // 통화를 정식으로 안 끊고 넘어가면 ringing/active가 그대로 쌓여서, MR이 이미 죽은 요청을 수락해
+        // "연결 대기 중"에 멈추는 일이 있었다. 진행 중이던 통화는 MR 도크도 닫히도록 call_end를 보낸다.
+        if (maintenance_log_id) {
+            const { rows: stale } = await pool.query(
+                `UPDATE remote_support SET status = 'ended', ended_at = NOW()
+                  WHERE maintenance_log_id = $1 AND status IN ('ringing', 'active')
+                  RETURNING id, channel_name, status`,
+                [maintenance_log_id]
+            );
+            for (const s of stale) {
+                console.log('[SUPPORT_CALL] 새 요청 전에 이전 요청 정리:', s.id);
+                notifyCallEnded(s, 'AR');
+            }
+        }
+
         const { rows } = await pool.query(
             `INSERT INTO remote_support
                 (id, initiator_id, receiver_id, initiator_platform, receiver_platform, status, channel_name, maintenance_log_id)
@@ -207,19 +223,38 @@ router.patch('/:id/reject', async (req, res) => {
     }
 });
 
-// 6. PATCH /api/support-calls/:id/end - 통화 종료 (AR/MR 어느 쪽이든)
+// 통화가 끝났음을 상대 기기에 WS로 알린다. by = 끊은 쪽('AR'|'MR') - 그 반대쪽에만 보낸다(모르면 양쪽).
+// 2026-10-23: 예전엔 /end가 DB만 바꿔서, AR이 통화를 끊어도 MR 도크가 열린 채 남았다(MR은 WS call_end로만
+// 통화 종료를 안다). 받는 쪽은 이미 끝난 통화의 call_end를 무시하므로 중복으로 가도 안전하다.
+function notifyCallEnded(row, by) {
+    if (!row.channel_name) return;
+    const targets = by === 'AR' ? ['MR'] : by === 'MR' ? ['AR'] : ['MR', 'AR'];
+    try {
+        const { sendTo } = require('./ws');
+        for (const t of targets) sendTo(t, { type: 'call_end', channelName: row.channel_name, id: row.id });
+    } catch (wsErr) {
+        console.warn('[SUPPORT_CALL] 통화 종료 WS 알림 실패:', wsErr.message);
+    }
+}
+
+// 6. PATCH /api/support-calls/:id/end?by=AR|MR - 통화 종료 (AR/MR 어느 쪽이든)
 router.patch('/:id/end', async (req, res) => {
     const { id } = req.params;
 
     try {
+        const { rows: before } = await pool.query(`SELECT status FROM remote_support WHERE id = $1`, [id]);
+        if (before.length === 0) {
+            return res.status(404).json({ success: false, message: '해당 요청을 찾을 수 없습니다.' });
+        }
+
         const { rows } = await pool.query(
-            `UPDATE remote_support SET status = 'ended', ended_at = NOW() WHERE id = $1 RETURNING *`,
+            `UPDATE remote_support SET status = 'ended', ended_at = COALESCE(ended_at, NOW())
+              WHERE id = $1 RETURNING *`,
             [id]
         );
 
-        if (rows.length === 0) {
-            return res.status(404).json({ success: false, message: '해당 요청을 찾을 수 없습니다.' });
-        }
+        // 이미 끝난 건은 다시 알리지 않는다(같은 통화를 양쪽이 각자 /end 해도 call_end는 한 번만).
+        if (before[0].status !== 'ended') notifyCallEnded(rows[0], req.query.by);
 
         return res.status(200).json({ success: true, data: toRow(rows[0]) });
     } catch (err) {
