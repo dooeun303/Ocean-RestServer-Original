@@ -209,37 +209,4 @@ router.patch('/:id', async (req, res) => {
 });
 
 
-// POST /api/maintenance — 유지보수 등록
-router.post('/', async (req, res) => {
-    const { equipment_id, work_type, description, scheduled_at, ar_user_id, technician_id, manual_id } = req.body;
-
-    // 빈 문자열을 null로 변환 (technician_id 는 구 키 - 하위호환)
-    const manual_id_value   = manual_id   || null;
-    const ar_user_id_value  = ar_user_id  || technician_id || null;
-    const description_value = description  || null;
-
-    if (!equipment_id || !work_type || !scheduled_at) {
-        return res.status(400).json({
-            success: false,
-            message: 'equipment_id, work_type, scheduled_at 은 필수입니다.'
-        });
-    }
-
-    try {
-        const { rows } = await pool.query(
-            `INSERT INTO ttt.maintenance
-                (id, equipment_id, manual_id, work_type, description, scheduled_at, ar_user_id, status)
-            VALUES
-                (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'scheduled')
-            RETURNING *`,
-            [equipment_id, manual_id_value, work_type, description_value, scheduled_at, ar_user_id_value]
-);
-
-        return res.status(201).json({ success: true, data: rows[0] });
-    } catch (err) {
-        console.error('[MAINTENANCE] 등록 오류:', err.message);
-        return res.status(500).json({ success: false, message: '서버 오류' });
-    }
-});
-
 module.exports = router;

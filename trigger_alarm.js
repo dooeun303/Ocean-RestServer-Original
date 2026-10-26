@@ -81,13 +81,4 @@ router.delete('/active', (req, res) => {
   res.json({ success: true, message: '알람 발생 정지' });
 });
 
-// GET /api/alarms/trigger-status — 현재 상태 확인 (구 /api/alarm/trigger/status)
-router.get('/trigger-status', (req, res) => {
-  res.json({
-    success: true,
-    running: intervalId !== null, // 실행 중 인지
-    interval_sec: INTERVAL_SEC, // 간격 정보
-  });
-});
-
 module.exports = router;
