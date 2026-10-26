@@ -39,7 +39,7 @@ const LIST_BY_STATUS_QUERY = 'SELECT m.id, m.equipment_id, m.work_type, m.descri
 
 // 유지보수 이력 상세 정보 쿼리
 const DETAIL_QUERY = 'SELECT m.id, m.work_type, m.description, m.result, m.ai_summary, m.status,' +
-    ' m.scheduled_at, m.completed_at, m.ar_user_id,' +
+    ' m.scheduled_at, m.completed_at, m.ar_user_id, t.user_nm AS ar_user_name,' +
     ' e.id AS equipment_id, e.name AS equipment_name, e.mr_space_id,' +
     ' mn.id AS manual_id, mn.title AS manual_title,' +
     ' mn.category AS manual_category, mn.content_url,' +
@@ -47,6 +47,7 @@ const DETAIL_QUERY = 'SELECT m.id, m.work_type, m.description, m.result, m.ai_su
     ' a.triggered_at' +
     ' FROM maintenance m' +
     ' JOIN equipment e ON e.id = m.equipment_id' +
+    ' LEFT JOIN user_info t ON t.user_id = m.ar_user_id' +
     ' LEFT JOIN manual mn ON mn.id = m.manual_id' +
     ' LEFT JOIN alarm a ON a.equipment_id = m.equipment_id AND a.is_active = true' +
     ' WHERE m.id = $1' +
