@@ -134,8 +134,9 @@ router.post('/instruction', upload.single('file'), async (req, res) => {
 
         // AR로 WebSocket 전송
         const { sendTo } = require('./ws');
+        const { MSG } = require('./ws_messages');
         sendTo('AR', {
-            type:     'file_share',
+            type:     MSG.FILE_SHARE,
             file_id:  rows[0].id,
             file_url: url,
         });

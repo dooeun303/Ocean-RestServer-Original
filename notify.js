@@ -1,6 +1,7 @@
 // 알람 발생 시 websocket으로 실시간 알림 보내는 모듈
 const { sendTo } = require('./ws');
 const { pool }   = require('./db');
+const { MSG }    = require('./ws_messages');
 
 // alarm 처리함수
 // DB에서 알람과 연관된 notification 조회 → 플랫폼별로 payload 생성 → 해당 플랫폼에 메시지 발송
@@ -36,7 +37,7 @@ async function handleAlarm(alarm) {
 // 플랫폼과 알람데이터를 받아 payload 를 생성하는 함수
 function buildPayload(platform, alarm) {
   const base = {
-    type        : 'ALARM',
+    type        : MSG.ALARM,
     alarm_id    : alarm.alarm_id,
     alarm_code  : alarm.alarm_code,
     severity    : alarm.severity,

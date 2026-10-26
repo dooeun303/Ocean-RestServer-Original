@@ -6,6 +6,7 @@ const { pipeline } = require('stream/promises');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { pool } = require('./db');
+const { MSG } = require('./ws_messages');
 
 // 원격지원 녹화 mp4 저장 폴더 - index.js의 /uploads 정적 서빙 아래라 /uploads/recordings/... 로 바로 재생 가능
 const RECORDING_DIR = path.join(__dirname, 'uploads', 'recordings');
@@ -116,7 +117,7 @@ router.post('/', async (req, res) => {
 
         try {
             const { sendTo } = require('./ws');
-            sendTo('MR', { type: 'support_call_request', id: row.id });
+            sendTo('MR', { type: MSG.SUPPORT_CALL_REQUEST, id: row.id });
         } catch (wsErr) {
             console.warn('[SUPPORT_CALL] WS 알림 실패(MR 미접속 등):', wsErr.message);
         }
@@ -182,7 +183,7 @@ router.patch('/:id/accept', async (req, res) => {
         const row = rows[0];
         try {
             const { sendTo } = require('./ws');
-            sendTo('AR', { type: 'support_call_accepted', id: row.id, channel_name: row.channel_name });
+            sendTo('AR', { type: MSG.SUPPORT_CALL_ACCEPTED, id: row.id, channel_name: row.channel_name });
         } catch (wsErr) {
             console.warn('[SUPPORT_CALL] WS 알림 실패:', wsErr.message);
         }
@@ -211,7 +212,7 @@ router.patch('/:id/reject', async (req, res) => {
         const row = rows[0];
         try {
             const { sendTo } = require('./ws');
-            sendTo('AR', { type: 'support_call_rejected', id: row.id });
+            sendTo('AR', { type: MSG.SUPPORT_CALL_REJECTED, id: row.id });
         } catch (wsErr) {
             console.warn('[SUPPORT_CALL] WS 알림 실패:', wsErr.message);
         }
@@ -231,7 +232,7 @@ function notifyCallEnded(row, by) {
     const targets = by === 'AR' ? ['MR'] : by === 'MR' ? ['AR'] : ['MR', 'AR'];
     try {
         const { sendTo } = require('./ws');
-        for (const t of targets) sendTo(t, { type: 'call_end', channelName: row.channel_name, id: row.id });
+        for (const t of targets) sendTo(t, { type: MSG.CALL_END, channelName: row.channel_name, id: row.id });
     } catch (wsErr) {
         console.warn('[SUPPORT_CALL] 통화 종료 WS 알림 실패:', wsErr.message);
     }
