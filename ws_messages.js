@@ -1,5 +1,5 @@
 // WebSocket 메시지 타입 목록 - 서버·AR·MR이 주고받는 { type: ... } 값은 전부 여기서 고른다.
-// Unity 쪽 같은 목록: AR Assets/Scripts/Net/WsMessageType.cs, MR Assets/00Desalination/Scripts/Net/WsMessageType.cs
+// Unity 쪽 같은 목록: AR Assets/Scripts/Core/Net/WsMessageType.cs, MR Assets/00Desalination/Scripts/Core/Net/WsMessageType.cs
 // 타입을 추가·변경할 때는 세 곳을 같이 고친다.
 const MSG = {
     // 화상통화
