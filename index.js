@@ -64,6 +64,13 @@ startListening(handleAlarm);
 // faster-whisper STT 서비스(stt_service.py)를 함께 자동 실행 (없으면 조용히 건너뜀)
 startSttService();
 
+// 테스트용 센서값 생성기도 함께 시작 - 실제 계측값이 들어오는 환경에선 .env에 SENSOR_SIM=off
+if ((process.env.SENSOR_SIM || 'on').toLowerCase() !== 'off') {
+    sensorSimRouter.start().catch(err => console.error('[SENSOR-SIM] 자동 시작 실패:', err.message));
+} else {
+    console.log('[SENSOR-SIM] SENSOR_SIM=off - 자동 시작 안 함');
+}
+
 server.listen(3000, () => {
     console.log('[SERVER] 포트 3000 실행 중');
 });

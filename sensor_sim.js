@@ -39,18 +39,24 @@ async function tick() {
   }
 }
 
+// 생성 시작 - 이미 실행 중이면 false. 서버 시작 때(index.js)와 POST에서 쓴다.
+async function start() {
+  if (intervalId) return false;
+  await loadBaselines();
+  await tick();
+  intervalId = setInterval(tick, INTERVAL_SEC * 1000);
+  console.log(`[SENSOR-SIM] 시작 - 센서 ${current.size}개, ${INTERVAL_SEC}초 간격`);
+  return true;
+}
+
 // POST /api/sensor-sim — 생성 시작
 router.post('/', async (req, res) => {
-  if (intervalId) return res.status(400).json({ success: false, message: '이미 실행 중입니다.' });
   try {
-    await loadBaselines();
+    if (!(await start())) return res.status(400).json({ success: false, message: '이미 실행 중입니다.' });
   } catch (err) {
     console.error('[SENSOR-SIM] 기준값 조회 실패:', err.message);
     return res.status(500).json({ success: false, message: '서버 오류' });
   }
-  await tick();
-  intervalId = setInterval(tick, INTERVAL_SEC * 1000);
-  console.log(`[SENSOR-SIM] 시작 - 센서 ${current.size}개, ${INTERVAL_SEC}초 간격`);
   res.json({ success: true, message: `센서 ${current.size}개, ${INTERVAL_SEC}초마다 측정값 생성 시작` });
 });
 
@@ -69,3 +75,4 @@ router.get('/', (req, res) => {
 });
 
 module.exports = router;
+module.exports.start = start;
