@@ -24,6 +24,7 @@ const manualRouter = require('./manual');
 const supportCallRouter = require('./support_call'); // AR→MR 지원 요청(원격지원) 큐 라우터
 const codeRouter = require('./codes'); // system_code 공통코드 조회
 const authRouter = require('./auth'); // QR 로그인 (MR/AR 공용) - JWT
+const sensorSimRouter = require('./sensor_sim'); // 테스트용 센서값 생성기
 
 const app = express();
 const server = http.createServer(app);
@@ -43,6 +44,7 @@ app.use('/api/equipment', equipmentRouter);          // GET /:id, GET /:id/senso
 app.use('/api/rtc', agoraRouter);                    // Agora 토큰
 app.use('/api/alarms', alarmRouter);                 // GET /            (목록)
 app.use('/api/alarms', alarmTriggerRouter);          // POST / · DELETE /active · GET /trigger-status
+app.use('/api/sensor-sim', sensorSimRouter);         // POST / 시작 · DELETE / 정지 · GET / 상태 (테스트용 센서값)
 app.use('/api/maintenances', maintenanceRouter);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/files', fileRouter);
